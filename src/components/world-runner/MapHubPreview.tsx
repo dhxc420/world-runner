@@ -32,29 +32,33 @@ export function MapHubPreview({ themeId }: MapHubPreviewProps) {
     const ro = new ResizeObserver(resize);
     ro.observe(canvas.parentElement!);
 
-    const drawForest = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
+    const drawRuins = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
       const groundY = h * 0.72;
       for (let i = -1; i < 8; i += 1) {
-        const bx = ((i * 140 - scroll * 0.35) % (w + 140)) - 20;
-        ctx.fillStyle = '#0a1828';
+        const bx = ((i * 130 - scroll * 0.35) % (w + 130)) - 20;
+        const bh = 70 + (i % 3) * 25;
+        ctx.fillStyle = '#1a1c22';
         ctx.beginPath();
         ctx.moveTo(bx, groundY);
-        ctx.lineTo(bx + 30, groundY - 90 - (i % 3) * 20);
-        ctx.lineTo(bx + 60, groundY);
+        ctx.lineTo(bx + 12, groundY - bh + 10);
+        ctx.lineTo(bx + 28, groundY - bh);
+        ctx.lineTo(bx + 48, groundY - bh + 8);
+        ctx.lineTo(bx + 56, groundY);
         ctx.fill();
-      }
-      for (let i = 0; i < 12; i += 1) {
-        const sx = ((i * 80 - scroll * 0.15) % (w + 80));
-        const sy = h * 0.15 + (i % 4) * 30;
-        ctx.fillStyle = `rgba(124, 255, 178, ${0.3 + (i % 3) * 0.15})`;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2 + (i % 2), 0, Math.PI * 2);
-        ctx.fill();
+        if (i % 2 === 0) {
+          ctx.fillStyle = 'rgba(255, 107, 53, 0.5)';
+          ctx.fillRect(bx + 14, groundY - bh * 0.5, 6, 8);
+        }
       }
     };
 
-    const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
+    const drawRuinsGrid = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
       const groundY = h * 0.72;
+      for (let i = -1; i < 6; i += 1) {
+        const bx = ((i * 150 - scroll * 0.4) % (w + 150)) - 30;
+        ctx.fillStyle = 'rgba(20, 24, 32, 0.7)';
+        ctx.fillRect(bx, groundY - 60, 48, 60);
+      }
       ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
       ctx.lineWidth = 1;
       for (let x = -scroll % 40; x < w; x += 40) {
@@ -69,22 +73,17 @@ export function MapHubPreview({ themeId }: MapHubPreviewProps) {
         ctx.lineTo(w, y);
         ctx.stroke();
       }
-      for (let i = 0; i < 6; i += 1) {
-        const px = ((i * 160 - scroll * 0.5) % (w + 160)) - 40;
-        ctx.strokeStyle = 'rgba(0, 212, 255, 0.35)';
-        ctx.strokeRect(px, groundY - 50, 50, 50);
-      }
     };
 
-    const drawHangar = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
+    const drawWarzone = (ctx: CanvasRenderingContext2D, w: number, h: number, scroll: number) => {
       const groundY = h * 0.72;
       for (let i = -1; i < 6; i += 1) {
         const px = ((i * 200 - scroll * 0.4) % (w + 200)) - 30;
-        ctx.fillStyle = '#141c28';
+        ctx.fillStyle = '#18141a';
         ctx.fillRect(px, groundY - 70, 120, 70);
-        ctx.strokeStyle = 'rgba(102, 204, 136, 0.4)';
+        ctx.strokeStyle = 'rgba(255, 102, 51, 0.4)';
         ctx.strokeRect(px + 8, groundY - 58, 104, 20);
-        ctx.fillStyle = 'rgba(255, 34, 0, 0.6)';
+        ctx.fillStyle = 'rgba(255, 68, 0, 0.6)';
         ctx.fillRect(px + 20, groundY - 52, 6, 6);
         ctx.fillRect(px + 90, groundY - 52, 6, 6);
       }
@@ -128,9 +127,9 @@ export function MapHubPreview({ themeId }: MapHubPreviewProps) {
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      if (theme.parallax === 'forest') drawForest(ctx, w, h, scroll);
-      else if (theme.parallax === 'hangar') drawHangar(ctx, w, h, scroll);
-      else drawGrid(ctx, w, h, scroll);
+      if (theme.parallax === 'ruins') drawRuins(ctx, w, h, scroll);
+      else if (theme.parallax === 'warzone') drawWarzone(ctx, w, h, scroll);
+      else drawRuinsGrid(ctx, w, h, scroll);
 
       drawRoute(ctx, w, h, scroll);
 

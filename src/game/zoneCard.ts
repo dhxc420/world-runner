@@ -5,7 +5,7 @@ export interface ZoneCardState {
   timer: number;
 }
 
-export const ZONE_CARD_HOLD = 2.4;
+export const ZONE_CARD_HOLD = 3;
 
 export function createZoneCard(title: string, subtitle: string, accent: string): ZoneCardState {
   return { title, subtitle, accent, timer: ZONE_CARD_HOLD };

@@ -3,21 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameEngine } from '@/game/GameEngine';
 import { SNAPSHOT_INTERVAL_MS } from '@/game/constants';
+import type { GameLevel } from '@/game/maps/levels';
+import { WORLD_LEVELS } from '@/game/maps/levels';
 import type { GameModifiers, GameSnapshot, PlayerAction } from '@/game/types';
 import { gameStorage } from '@/lib/gameStorage';
 
 interface UseGameOptions {
   modifiers: GameModifiers;
-  initialPlaylistId?: string;
   onGameOver?: (snapshot: GameSnapshot) => void;
   onAfterContinue?: () => void;
 }
 
-export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterContinue }: UseGameOptions) {
+export function useGame({ modifiers, onGameOver, onAfterContinue }: UseGameOptions) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const modifiersRef = useRef(modifiers);
+  const activeLevelRef = useRef<GameLevel | null>(null);
   modifiersRef.current = modifiers;
 
   const [snapshot, setSnapshot] = useState<GameSnapshot>({
@@ -33,7 +35,41 @@ export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterConti
     mapName: '',
   });
 
+function clearRunSnapshot(prev: GameSnapshot): GameSnapshot {
+  return {
+    ...prev,
+    phase: 'idle',
+    score: 0,
+    distance: 0,
+    orbsCollected: 0,
+    combo: 0,
+    maxCombo: 0,
+    speed: 0,
+    isNewHighScore: false,
+    levelComplete: false,
+    wonderName: undefined,
+    runRewardMessage: undefined,
+  };
+}
+
   const lastSnapshotMs = useRef(0);
+
+  const submitLeaderboard = useCallback(async (final: GameSnapshot) => {
+    if (!gameStorage.isVerifiedHuman()) return;
+    try {
+      await fetch('/api/leaderboard/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score: final.score,
+          distance: final.distance,
+          levelName: final.mapName,
+        }),
+      });
+    } catch {
+      /* optional */
+    }
+  }, []);
 
   const handleSnapshot = useCallback((next: GameSnapshot) => {
     if (next.phase === 'playing') {
@@ -55,6 +91,20 @@ export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterConti
       const isNewHighScore = score > highScore;
       if (isNewHighScore) gameStorage.setHighScore(score);
       gameStorage.recordRun(final.distance, final.orbsCollected);
+
+      const level = activeLevelRef.current;
+      if (level) {
+        const idx = WORLD_LEVELS.findIndex((l) => l.id === level.id);
+        const nextLevel = idx >= 0 && idx < WORLD_LEVELS.length - 1 ? WORLD_LEVELS[idx + 1].id : null;
+        gameStorage.recordLevelRun(
+          level.id,
+          score,
+          final.orbsCollected,
+          !!final.levelComplete,
+          nextLevel,
+        );
+      }
+
       let dailyJustCompleted = false;
       if (gameStorage.isVerifiedHuman()) {
         dailyJustCompleted = gameStorage.updateDailyChallenge(final.orbsCollected);
@@ -65,12 +115,15 @@ export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterConti
         ...final,
         highScore: Math.max(highScore, score),
         isNewHighScore,
-        runRewardMessage: rewards.message,
+        runRewardMessage: final.levelComplete
+          ? `✦ Nivel completado${final.wonderName ? ` — ${final.wonderName}` : ''}`
+          : rewards.message,
       };
       setSnapshot(enriched);
+      void submitLeaderboard(enriched);
       onGameOver?.(enriched);
     },
-    [onGameOver],
+    [onGameOver, submitLeaderboard],
   );
 
   useEffect(() => {
@@ -98,57 +151,55 @@ export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterConti
     });
     engineRef.current = engine;
 
-    if (initialPlaylistId) engine.setPlaylist(initialPlaylistId);
-
     resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(resize);
+      observer.observe(container);
+    }
 
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       engine.destroy();
       engineRef.current = null;
     };
-    // initialPlaylistId handled by dedicated effect below — avoid remounting engine on map change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleGameOver, handleSnapshot]);
-
-  useEffect(() => {
-    if (initialPlaylistId) engineRef.current?.setPlaylist(initialPlaylistId);
-  }, [initialPlaylistId]);
 
   useEffect(() => {
     engineRef.current?.updateConfig({ modifiers: modifiersRef.current });
   }, [modifiers]);
 
-  const start = useCallback((options?: { speedBoost?: boolean; magnetBoost?: boolean; playlistId?: string }) => {
-    lastSnapshotMs.current = 0;
-    engineRef.current?.start(options);
-  }, []);
+  const start = useCallback(
+    (options?: {
+      speedBoost?: boolean;
+      magnetBoost?: boolean;
+      level?: GameLevel;
+      speedMultiplier?: number;
+    }) => {
+      lastSnapshotMs.current = 0;
+      activeLevelRef.current = options?.level ?? null;
+      engineRef.current?.start(options);
+    },
+    [],
+  );
 
   const restart = useCallback(() => {
     lastSnapshotMs.current = 0;
     engineRef.current?.restart();
   }, []);
 
-  const setPlaylist = useCallback((playlistId: string) => {
-    engineRef.current?.setPlaylist(playlistId);
+  const setLevel = useCallback((level: GameLevel) => {
+    activeLevelRef.current = level;
+    engineRef.current?.setLevel(level);
   }, []);
 
   const returnToHub = useCallback(() => {
     engineRef.current?.returnToHub();
-    lastSnapshotMs.current = 0;
-    setSnapshot((prev) => ({
-      ...prev,
-      phase: 'idle',
-      score: 0,
-      distance: 0,
-      orbsCollected: 0,
-      combo: 0,
-      maxCombo: 0,
-      speed: 0,
-      isNewHighScore: false,
-    }));
+    setSnapshot((prev) => clearRunSnapshot(prev));
+  }, []);
+
+  const resetSnapshot = useCallback(() => {
+    setSnapshot((prev) => clearRunSnapshot(prev));
   }, []);
 
   const pause = useCallback(() => {
@@ -192,9 +243,10 @@ export function useGame({ modifiers, initialPlaylistId, onGameOver, onAfterConti
     restart,
     input,
     tryContinue,
-    setPlaylist,
+    setLevel,
     returnToHub,
     pause,
     resume,
+    resetSnapshot,
   };
 }

@@ -13,9 +13,11 @@ export function drawNeonButterfly(
     verified: boolean;
     squashX?: number;
     squashY?: number;
+    rainbowMode?: boolean;
+    elapsed?: number;
   },
 ) {
-  const { wingColor, bodyColor, wingPhase, ducking, verified } = opts;
+  const { wingColor, bodyColor, wingPhase, ducking, verified, rainbowMode, elapsed = 0 } = opts;
   const squashX = opts.squashX ?? 1;
   const squashY = opts.squashY ?? 1;
   const flap = ducking ? 0.1 : Math.sin(wingPhase) * 0.5 + 0.5;
@@ -29,15 +31,20 @@ export function drawNeonButterfly(
     const open = 0.35 + flap * 0.65;
     const upperAngle = side * (-0.15 - open * 0.85);
     const lowerAngle = side * (0.1 + open * 0.55);
+    const wingHue = rainbowMode
+      ? (elapsed * 280 + side * 60 + open * 40) % 360
+      : null;
+    const fillColor = wingHue !== null ? `hsl(${wingHue}, 100%, 62%)` : wingColor + 'bb';
+    const strokeColor = wingHue !== null ? `hsl(${wingHue}, 100%, 72%)` : wingColor;
 
     // Ala superior
     ctx.save();
     ctx.rotate(upperAngle);
-    ctx.fillStyle = wingColor + 'bb';
-    ctx.strokeStyle = wingColor;
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 2;
-    ctx.shadowColor = wingColor;
-    ctx.shadowBlur = 14;
+    ctx.shadowColor = strokeColor;
+    ctx.shadowBlur = rainbowMode ? 22 : 14;
     ctx.beginPath();
     ctx.moveTo(2 * side, -2);
     ctx.bezierCurveTo(8 * side, -22, 34 * side, -20, 38 * side, -2);
@@ -56,11 +63,12 @@ export function drawNeonButterfly(
     // Ala inferior (más pequeña)
     ctx.save();
     ctx.rotate(lowerAngle);
-    ctx.fillStyle = wingColor + '99';
-    ctx.strokeStyle = wingColor;
+    const lowerFill = wingHue !== null ? `hsl(${(wingHue! + 40) % 360}, 100%, 55%)` : wingColor + '99';
+    ctx.fillStyle = lowerFill;
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = wingColor;
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = strokeColor;
+    ctx.shadowBlur = rainbowMode ? 18 : 10;
     ctx.beginPath();
     ctx.moveTo(2 * side, 2);
     ctx.bezierCurveTo(10 * side, 8, 26 * side, 14, 28 * side, 6);

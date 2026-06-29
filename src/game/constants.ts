@@ -1,12 +1,12 @@
-export const GRAVITY = 2600;
-export const JUMP_VELOCITY = -820;
-export const DOUBLE_JUMP_VELOCITY = -680;
+export const GRAVITY = 2400;
+export const JUMP_VELOCITY = -880;
+export const DOUBLE_JUMP_VELOCITY = -720;
 export const GROUND_RATIO = 0.76;
 export const PLAYER_X_RATIO = 0.2;
 
-export const BASE_SPEED = 340;
-export const MAX_SPEED = 720;
-export const SPEED_RAMP = 9;
+export const BASE_SPEED = 220;
+export const MAX_SPEED = 470;
+export const SPEED_RAMP = 4;
 
 export const SPAWN_MIN_MS = 850;
 export const SPAWN_MAX_MS = 1700;
@@ -14,8 +14,8 @@ export const SPAWN_MAX_MS = 1700;
 export const MAGNET_RADIUS = 160;
 export const MAGNET_PULL = 580;
 
-export const COYOTE_TIME = 0.11;
-export const JUMP_BUFFER = 0.14;
+export const COYOTE_TIME = 0.13;
+export const JUMP_BUFFER = 0.15;
 export const JUMP_CUT_MULT = 0.42;
 export const SNAPSHOT_INTERVAL_MS = 100;
 
@@ -25,6 +25,8 @@ export const COMBO_BONUS = 0.35;
 export const FLUX_DURATION = 3.5;
 export const NOVA_DURATION = 5;
 export const SHIELD_HITS = 1;
+export const RAINBOW_STAR_SPEED_MULT = 1.42;
+export const RAINBOW_STAR_FLY_LIFT = 520;
 export const INVINCIBLE_AFTER_CONTINUE = 2;
 
 /** Ori bioluminescence + Tron neon palette */

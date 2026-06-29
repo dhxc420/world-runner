@@ -3,24 +3,44 @@
 import { walletAuth } from '@/auth/wallet';
 import { Button, LiveFeedback } from '@worldcoin/mini-apps-ui-kit-react';
 import { useMiniKit } from '@worldcoin/minikit-js/minikit-provider';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const AuthButton = () => {
+  const router = useRouter();
   const [isPending, setIsPending] = useState(false);
+  const [failed, setFailed] = useState(false);
   const { isInstalled } = useMiniKit();
   const hasAttemptedAuth = useRef(false);
+
+  const completeLogin = useCallback(
+    async (result: Awaited<ReturnType<typeof walletAuth>>) => {
+      if (!result.ok) {
+        console.error('Wallet authentication failed:', result.error);
+        setFailed(true);
+        setTimeout(() => setFailed(false), 3000);
+        return;
+      }
+      router.push('/home');
+      router.refresh();
+    },
+    [router],
+  );
 
   const onClick = useCallback(async () => {
     if (!isInstalled || isPending) return;
     setIsPending(true);
+    setFailed(false);
     try {
-      await walletAuth();
+      await completeLogin(await walletAuth());
     } catch (error) {
       console.error('Wallet authentication button error', error);
+      setFailed(true);
+      setTimeout(() => setFailed(false), 3000);
     } finally {
       setIsPending(false);
     }
-  }, [isInstalled, isPending]);
+  }, [completeLogin, isInstalled, isPending]);
 
   // Auto-auth only inside World App
   useEffect(() => {
@@ -28,13 +48,16 @@ export const AuthButton = () => {
     hasAttemptedAuth.current = true;
     setIsPending(true);
     walletAuth()
+      .then(completeLogin)
       .catch((error) => {
         console.error('Auto wallet authentication error', error);
+        setFailed(true);
+        setTimeout(() => setFailed(false), 3000);
       })
       .finally(() => {
         setIsPending(false);
       });
-  }, [isInstalled]);
+  }, [completeLogin, isInstalled]);
 
   if (isInstalled === false) {
     return (
@@ -47,11 +70,11 @@ export const AuthButton = () => {
   return (
     <LiveFeedback
       label={{
-        failed: 'Failed to login',
-        pending: 'Logging in',
-        success: 'Logged in',
+        failed: 'Error al conectar wallet',
+        pending: 'Conectando wallet...',
+        success: 'Conectado',
       }}
-      state={isPending ? 'pending' : undefined}
+      state={isPending ? 'pending' : failed ? 'failed' : undefined}
       className="w-full max-w-xs"
     >
       <Button

@@ -8,6 +8,7 @@ export type SpawnType =
   | 'orb_fake'
   | 'wonder_flower'
   | 'spirit_shrine'
+  | 'rainbow_star'
   | `powerup_${PowerupKind}`;
 
 export interface SpawnPoint {
@@ -21,7 +22,13 @@ export interface MapChunk {
   name: string;
   width: number;
   spawns: SpawnPoint[];
+  /** Optional per-zone accent tint within a level */
+  zoneAccent?: string;
+  /** Act role — intro teaches, finish holds the gate */
+  role?: ChunkRole;
 }
+
+export type ChunkRole = 'intro' | 'core' | 'climax' | 'payoff' | 'finish';
 
 export interface MapTheme {
   id: string;
@@ -36,7 +43,7 @@ export interface MapTheme {
   groundLine: string;
   accent: string;
   wispHue: [number, number];
-  parallax: 'forest' | 'grid' | 'hangar';
+  parallax: 'ruins' | 'ruins_grid' | 'warzone';
 }
 
 export interface MapPlaylist {

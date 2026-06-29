@@ -1,7 +1,6 @@
 'use client';
 
 import { signOut } from 'next-auth/react';
-import { Button } from '@worldcoin/mini-apps-ui-kit-react';
 import { useSession } from 'next-auth/react';
 
 export function GuestBanner() {
@@ -10,20 +9,26 @@ export function GuestBanner() {
   if (!session?.user?.isGuest) return null;
 
   return (
-    <div className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4">
-      <p className="font-semibold text-violet-100">Modo invitado</p>
-      <p className="mt-1 text-sm text-violet-200/70">
-        Tu progreso se guarda en este navegador. Abre la app en World App para conectar wallet,
-        verificar con World ID y usar la tienda.
-      </p>
-      <Button
-        size="sm"
-        variant="tertiary"
-        className="mt-3 border border-violet-400/40 text-violet-100 hover:bg-violet-500/15"
+    <div className="home-guest-banner">
+      <div className="flex items-start gap-3">
+        <span className="text-xl" aria-hidden="true">
+          👋
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-violet-100">Modo invitado</p>
+          <p className="mt-1 text-sm leading-relaxed text-violet-200/75">
+            Tu progreso se guarda en este navegador. Abre en World App para conectar wallet,
+            verificar con World ID y usar la tienda.
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        className="mt-3 w-full rounded-xl border border-violet-300/35 bg-violet-500/20 px-4 py-2.5 text-sm font-semibold text-violet-50 transition hover:bg-violet-500/30"
         onClick={() => signOut({ redirectTo: '/' })}
       >
         Salir del modo invitado
-      </Button>
+      </button>
     </div>
   );
 }

@@ -1,10 +1,12 @@
 'use client';
 
-import { IDKit, orbLegacy, type RpContext } from '@worldcoin/idkit';
+import { IDKitRequestWidget, orbLegacy, type IDKitResult, type RpContext } from '@worldcoin/idkit';
 import { Button, LiveFeedback } from '@worldcoin/mini-apps-ui-kit-react';
 import { useState } from 'react';
 import { usePlayerProgress } from '@/context/PlayerProgressContext';
 import { WORLD_ID_ACTION } from '@/lib/shopCatalog';
+
+const APP_ID = process.env.NEXT_PUBLIC_APP_ID as `app_${string}`;
 
 interface VerifyHumanProps {
   compact?: boolean;
@@ -15,8 +17,10 @@ export function VerifyHuman({ compact }: VerifyHumanProps) {
   const [buttonState, setButtonState] = useState<
     'pending' | 'success' | 'failed' | undefined
   >(undefined);
+  const [open, setOpen] = useState(false);
+  const [rpContext, setRpContext] = useState<RpContext | null>(null);
 
-  const onClickVerify = async () => {
+  const startVerify = async () => {
     setButtonState('pending');
     try {
       const rpRes = await fetch('/api/rp-signature', {
@@ -28,48 +32,38 @@ export function VerifyHuman({ compact }: VerifyHumanProps) {
       if (!rpRes.ok) throw new Error('Failed to get RP signature');
 
       const rpSig = await rpRes.json();
-      const rpContext: RpContext = {
+      setRpContext({
         rp_id: rpSig.rp_id,
         nonce: rpSig.nonce,
         created_at: rpSig.created_at,
         expires_at: rpSig.expires_at,
         signature: rpSig.sig,
-      };
-
-      const request = await IDKit.request({
-        app_id: process.env.NEXT_PUBLIC_APP_ID as `app_${string}`,
-        action: WORLD_ID_ACTION,
-        rp_context: rpContext,
-        allow_legacy_proofs: true,
-      }).preset(orbLegacy({ signal: '' }));
-
-      const completion = await request.pollUntilCompletion();
-      if (!completion.success) {
-        setButtonState('failed');
-        setTimeout(() => setButtonState(undefined), 2000);
-        return;
-      }
-
-      const response = await fetch('/api/verify-proof', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rp_id: rpSig.rp_id,
-          idkitResponse: completion.result,
-        }),
       });
-
-      const data = await response.json();
-      if (data.success) {
-        setVerifiedHuman(true);
-        setButtonState('success');
-      } else {
-        setButtonState('failed');
-        setTimeout(() => setButtonState(undefined), 2000);
-      }
-    } catch {
+      setOpen(true);
+    } catch (error) {
+      console.error('World ID RP signature error', error);
       setButtonState('failed');
       setTimeout(() => setButtonState(undefined), 2000);
+    }
+  };
+
+  const handleVerify = async (result: IDKitResult) => {
+    const response = await fetch('/api/verify-proof', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rp_id: rpContext?.rp_id,
+        idkitResponse: result,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      console.error('World ID verify error', data);
+      throw new Error(data.error ?? 'Verification failed');
+    }
+    if (data.registered) {
+      setVerifiedHuman(true);
     }
   };
 
@@ -106,7 +100,7 @@ export function VerifyHuman({ compact }: VerifyHumanProps) {
         className="w-full"
       >
         <Button
-          onClick={onClickVerify}
+          onClick={startVerify}
           disabled={buttonState === 'pending'}
           size="lg"
           variant="primary"
@@ -115,6 +109,41 @@ export function VerifyHuman({ compact }: VerifyHumanProps) {
           Verificar con World ID
         </Button>
       </LiveFeedback>
+
+      {rpContext && APP_ID?.startsWith('app_') && (
+        <IDKitRequestWidget
+          app_id={APP_ID}
+          action={WORLD_ID_ACTION}
+          rp_context={rpContext}
+          allow_legacy_proofs
+          preset={orbLegacy({ signal: '' })}
+          open={open}
+          onOpenChange={(next) => {
+            setOpen(next);
+            if (!next) {
+              setRpContext(null);
+              if (buttonState === 'pending') setButtonState(undefined);
+            }
+          }}
+          handleVerify={handleVerify}
+          onSuccess={() => {
+            setButtonState('success');
+            setOpen(false);
+            setRpContext(null);
+          }}
+          onError={(code) => {
+            setOpen(false);
+            setRpContext(null);
+            if (code !== 'user_rejected') {
+              setButtonState('failed');
+              setTimeout(() => setButtonState(undefined), 2000);
+            } else {
+              setButtonState(undefined);
+            }
+          }}
+          autoClose
+        />
+      )}
     </div>
   );
 }

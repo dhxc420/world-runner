@@ -17,9 +17,12 @@ import {
   NOVA_DURATION,
   PALETTE,
   PLAYER_X_RATIO,
+  RAINBOW_STAR_FLY_LIFT,
+  RAINBOW_STAR_SPEED_MULT,
   SPEED_RAMP,
 } from './constants';
 import { gameAudio } from './audio';
+import { gameMusic } from './music';
 import { createCompanion, pulseCompanion, updateCompanion } from './companion';
 import {
   pushTrail,
@@ -32,10 +35,15 @@ import {
 import { spawnFloatText, updateFloatTexts } from './floatText';
 import { laneToObstacleY, laneToOrbY, laneToPowerupY } from './lanes';
 import { MapDirector } from './maps/MapDirector';
-import type { SpawnLane } from './maps/types';
+import type { GameLevel } from './maps/levels';
+import type { LevelMechanicId, MechanicGimmick } from './maps/levelMechanics';
+import { getMechanic } from './maps/levelMechanics';
+import { levelVisualSeed } from './maps/themes';
+import type { SpawnLane, ChunkRole } from './maps/types';
 import { GameRenderer } from './renderer';
 import { createZoneCard, updateZoneCard } from './zoneCard';
 import type { ZoneCardState } from './zoneCard';
+import { isMusicEnabled } from '@/lib/settings';
 import { gameStorage } from '@/lib/gameStorage';
 import type {
   CompanionState,
@@ -51,6 +59,7 @@ import type {
   PlayerAction,
   PowerupEntity,
   PowerupKind,
+  ProjectileEntity,
   Rect,
   SpiritWisp,
   TrailPoint,
@@ -62,6 +71,13 @@ import {
   updateWonderMode,
   type WonderModeState,
 } from './wonderMode';
+import {
+  activateRainbowStar,
+  createRainbowStar,
+  isRainbowStarActive,
+  updateRainbowStar,
+  type RainbowStarState,
+} from './rainbowStarMode';
 
 function rectsOverlap(a: Rect, b: Rect, padding = 0): boolean {
   return (
@@ -106,6 +122,7 @@ export class GameEngine {
   private entityId = 0;
 
   private obstacles: ObstacleEntity[] = [];
+  private projectiles: ProjectileEntity[] = [];
   private orbs: OrbEntity[] = [];
   private powerups: PowerupEntity[] = [];
   private pickups: PickupEntity[] = [];
@@ -123,6 +140,7 @@ export class GameEngine {
   private usedContinue = false;
   private dyingTimer = 0;
   private wonderMode: WonderModeState = createWonderMode();
+  private rainbowStar: RainbowStarState = createRainbowStar();
 
   private shakeX = 0;
   private shakeY = 0;
@@ -136,6 +154,16 @@ export class GameEngine {
   private zoneCard: ZoneCardState | null = null;
   private lastSnapshotEmit = 0;
   private playlistId: string | undefined;
+  private speedMultiplier = 1;
+  private activeLevel: GameLevel | null = null;
+  private mechanicJumpMult = 1;
+  private mechanicGravityMult = 1;
+  private mechanicSpeedRampMult = 1;
+  private mechanicBaseSpeedMult = 1;
+  private mechanicMaxSpeedMult = 1;
+  private mechanicGimmick: MechanicGimmick | null = null;
+  private levelCompleteTriggered = false;
+  private zonePauseTimer = 0;
   private mapDirector = new MapDirector();
 
   constructor(canvas: HTMLCanvasElement, config: GameConfig) {
@@ -157,18 +185,55 @@ export class GameEngine {
     return this.phase;
   }
 
-  start(options?: { speedBoost?: boolean; magnetBoost?: boolean; playlistId?: string }) {
-    if (options?.playlistId) this.playlistId = options.playlistId;
+  start(options?: {
+    speedBoost?: boolean;
+    magnetBoost?: boolean;
+    playlistId?: string;
+    level?: GameLevel;
+    speedMultiplier?: number;
+  }) {
+    if (options?.level) {
+      this.activeLevel = options.level;
+      this.playlistId = undefined;
+      this.setLevel(options.level);
+    } else if (options?.playlistId) {
+      this.playlistId = options.playlistId;
+      this.activeLevel = null;
+    }
+    if (options?.speedMultiplier) this.speedMultiplier = options.speedMultiplier;
     gameAudio.unlock();
+    gameMusic.unlock();
     this.resetRunState();
     this.phase = 'playing';
+    if (isMusicEnabled()) {
+      gameMusic.setMuted(false);
+      gameMusic.start(this.mapDirector.getTheme().id);
+    } else {
+      gameMusic.setMuted(true);
+    }
     if (options?.speedBoost) this.activateSpeedBoost();
     if (options?.magnetBoost) this.activateMagnet();
     this.lastTime = performance.now();
     if (!this.rafId) this.loop(this.lastTime);
   }
 
+  setLevel(level: GameLevel) {
+    this.activeLevel = level;
+    this.speedMultiplier = level.speedMultiplier;
+    const mech = getMechanic(level.mechanic);
+    this.mechanicGravityMult = mech.gravityMult;
+    this.mechanicJumpMult = mech.jumpMult;
+    this.mechanicSpeedRampMult = mech.speedRampMult;
+    this.mechanicBaseSpeedMult = mech.baseSpeedMult;
+    this.mechanicMaxSpeedMult = mech.maxSpeedMult;
+    this.mechanicGimmick = mech.gimmick;
+    this.mapDirector.setLevel(level);
+    this.initAmbience(this.mapDirector.getTheme());
+    if (this.phase === 'idle') this.startIdleLoop();
+  }
+
   setPlaylist(playlistId: string) {
+    this.speedMultiplier = 1;
     this.playlistId = playlistId;
     this.mapDirector.setPlaylist(playlistId);
     this.initAmbience(this.mapDirector.getTheme());
@@ -177,6 +242,7 @@ export class GameEngine {
 
   returnToHub() {
     this.stopLoop();
+    gameMusic.stop();
     this.phase = 'idle';
     if (this.playlistId) this.mapDirector.setPlaylist(this.playlistId);
     this.playerY = this.groundY - this.playerH;
@@ -186,13 +252,20 @@ export class GameEngine {
 
   restart() {
     this.stopLoop();
-    this.start();
+    this.start(
+      this.activeLevel
+        ? { level: this.activeLevel, speedMultiplier: this.speedMultiplier }
+        : this.playlistId
+          ? { playlistId: this.playlistId }
+          : undefined,
+    );
   }
 
   pause() {
     if (this.phase === 'playing') {
       this.phase = 'paused';
       this.stopLoop();
+      gameMusic.stop();
       this.render();
       this.emitSnapshot(true);
     }
@@ -201,6 +274,10 @@ export class GameEngine {
   resume() {
     if (this.phase === 'paused') {
       this.phase = 'playing';
+      if (isMusicEnabled()) {
+        gameMusic.setMuted(false);
+        gameMusic.start(this.mapDirector.getTheme().id);
+      }
       this.lastTime = performance.now();
       this.emitSnapshot(true);
       if (!this.rafId) this.loop(this.lastTime);
@@ -230,6 +307,7 @@ export class GameEngine {
     this.usedContinue = true;
     const safeX = this.playerX + 80;
     this.obstacles = this.obstacles.filter((o) => o.x > safeX);
+    this.projectiles = this.projectiles.filter((p) => p.x > safeX);
     this.orbs = this.orbs.filter((o) => o.collected || o.x > safeX);
     this.powerups = this.powerups.filter((p) => p.collected || p.x > safeX);
     this.pickups = this.pickups.filter((p) => p.collected || p.x > safeX);
@@ -307,7 +385,7 @@ export class GameEngine {
   }
 
   private resetRunState() {
-    this.speed = BASE_SPEED;
+    this.speed = BASE_SPEED * this.mechanicBaseSpeedMult * this.speedMultiplier;
     this.distance = 0;
     this.score = 0;
     this.orbsCollected = 0;
@@ -316,6 +394,7 @@ export class GameEngine {
     this.comboTimer = 0;
     this.elapsed = 0;
     this.obstacles = [];
+    this.projectiles = [];
     this.orbs = [];
     this.powerups = [];
     this.pickups = [];
@@ -344,7 +423,33 @@ export class GameEngine {
     this.zoneCard = null;
     this.dyingTimer = 0;
     this.wonderMode = createWonderMode();
-    this.mapDirector.reset(this.playlistId);
+    this.rainbowStar = createRainbowStar();
+    this.levelCompleteTriggered = false;
+    this.zonePauseTimer = 0;
+    if (this.activeLevel) {
+      const mech = getMechanic(this.activeLevel.mechanic);
+      this.mechanicGravityMult = mech.gravityMult;
+      this.mechanicJumpMult = mech.jumpMult;
+      this.mechanicSpeedRampMult = mech.speedRampMult;
+      this.mechanicBaseSpeedMult = mech.baseSpeedMult;
+      this.mechanicMaxSpeedMult = mech.maxSpeedMult;
+      this.mechanicGimmick = mech.gimmick;
+    } else {
+      this.mechanicGravityMult = 1;
+      this.mechanicJumpMult = 1;
+      this.mechanicSpeedRampMult = 1;
+      this.mechanicBaseSpeedMult = 1;
+      this.mechanicMaxSpeedMult = 1;
+      this.mechanicGimmick = null;
+    }
+    if (this.activeLevel) {
+      this.mapDirector.setLevel(this.activeLevel);
+    } else if (this.playlistId) {
+      this.mapDirector.setPlaylist(this.playlistId);
+    } else {
+      this.mapDirector.reset();
+    }
+    this.initAmbience(this.mapDirector.getTheme());
     this.playerY = this.groundY - this.playerH;
 
     const mods = this.config.modifiers;
@@ -409,7 +514,7 @@ export class GameEngine {
     if (!canJump) return;
 
     const isDoubleJump = !this.isGrounded && this.coyoteTimer <= 0;
-    this.playerVy = isDoubleJump ? DOUBLE_JUMP_VELOCITY : JUMP_VELOCITY;
+    this.playerVy = (isDoubleJump ? DOUBLE_JUMP_VELOCITY : JUMP_VELOCITY) * this.mechanicJumpMult;
     this.squashX = 0.82;
     this.squashY = 1.22;
     this.isGrounded = false;
@@ -428,7 +533,7 @@ export class GameEngine {
   private update(dt: number) {
     if (this.dyingTimer > 0) {
       this.dyingTimer -= dt;
-      this.shakeIntensity = Math.max(this.shakeIntensity, 6);
+      this.shakeIntensity = Math.max(this.shakeIntensity, 4);
       this.particles = updateParticles(this.particles, dt * 0.22, 0);
       this.floatTexts = updateFloatTexts(this.floatTexts, dt * 0.22, 0);
       updateWonderMode(this.wonderMode, dt * 0.22);
@@ -445,7 +550,15 @@ export class GameEngine {
     this.distance += this.speed * scaledDt * 0.1;
 
     const speedMult = this.fluxTimer > 0 ? 0.7 : 1;
-    this.speed = Math.min(MAX_SPEED, this.speed + SPEED_RAMP * scaledDt * speedMult);
+    const speedCap = this.mapDirector.isFiniteLevel()
+      ? BASE_SPEED * this.mechanicMaxSpeedMult * this.speedMultiplier
+      : MAX_SPEED * this.speedMultiplier;
+    this.speed = Math.min(
+      speedCap,
+      this.speed + SPEED_RAMP * this.mechanicSpeedRampMult * scaledDt * speedMult,
+    );
+
+    if (this.zonePauseTimer > 0) this.zonePauseTimer -= dt;
 
     if (this.magnetTimer > 0) this.magnetTimer -= dt;
     if (this.speedBoostTimer > 0) this.speedBoostTimer -= dt;
@@ -453,6 +566,12 @@ export class GameEngine {
     if (this.novaTimer > 0) this.novaTimer -= dt;
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
     updateWonderMode(this.wonderMode, dt);
+    updateRainbowStar(this.rainbowStar, dt);
+    const rainbowActive = isRainbowStarActive(this.rainbowStar);
+    if (rainbowActive) {
+      this.invincibleTimer = Math.max(this.invincibleTimer, this.rainbowStar.timer);
+      this.jumpsRemaining = this.maxJumps;
+    }
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.combo = 0;
@@ -460,8 +579,8 @@ export class GameEngine {
     if (this.jumpBufferTimer > 0) this.jumpBufferTimer -= dt;
     if (this.shakeIntensity > 0) {
       this.shakeIntensity -= dt * 10;
-      this.shakeX = (Math.random() - 0.5) * this.shakeIntensity * 8;
-      this.shakeY = (Math.random() - 0.5) * this.shakeIntensity * 6;
+      this.shakeX = (Math.random() - 0.5) * this.shakeIntensity * 5;
+      this.shakeY = (Math.random() - 0.5) * this.shakeIntensity * 3.5;
     } else {
       this.shakeX = 0;
       this.shakeY = 0;
@@ -482,9 +601,14 @@ export class GameEngine {
     // Player physics
     const wasGrounded = this.isGrounded;
     if (!this.isGrounded) {
-      this.playerVy += GRAVITY * scaledDt;
+      this.playerVy += GRAVITY * this.mechanicGravityMult * scaledDt * (rainbowActive ? 0.22 : 1);
       if (isWonderActive(this.wonderMode) && this.wonderMode.variant === 'float') {
         this.playerVy += 420 * scaledDt;
+      }
+      if (rainbowActive) {
+        this.playerVy -= RAINBOW_STAR_FLY_LIFT * scaledDt;
+        this.playerVy = Math.max(this.playerVy, -920);
+        this.playerVy = Math.min(this.playerVy, 280);
       }
       this.playerY += this.playerVy * scaledDt;
       this.coyoteTimer -= dt;
@@ -505,23 +629,72 @@ export class GameEngine {
       gameAudio.playLand();
     }
 
-    const scroll = this.speed * scaledDt;
+    const zoneScrollMult = this.zonePauseTimer > 0 ? 0.35 : 1;
+    const roleScrollMult = this.getRoleScrollMult(this.mapDirector.getChunkRole());
+    const gimmickScrollMult = this.getGimmickScrollMult();
+    const scroll =
+      this.speed *
+      scaledDt *
+      (rainbowActive ? RAINBOW_STAR_SPEED_MULT : 1) *
+      zoneScrollMult *
+      roleScrollMult *
+      gimmickScrollMult;
 
     this.mapDirector.advanceScroll(scroll);
     this.mapDirector.update({
-      spawnBot: (lane) => this.spawnObstacle('bot', lane),
-      spawnDeepfake: (lane) => this.spawnObstacle('deepfake', lane),
-      spawnFirewall: (lane) => this.spawnObstacle('firewall', lane),
+      spawnBot: (lane) => {
+        if (this.canSpawnEnemy('bot')) this.spawnObstacle('bot', lane);
+      },
+      spawnDeepfake: (lane) => {
+        if (this.canSpawnEnemy('deepfake')) this.spawnObstacle('deepfake', lane);
+      },
+      spawnFirewall: (lane) => {
+        if (this.canSpawnEnemy('firewall')) this.spawnObstacle('firewall', lane);
+      },
+      spawnPatrolCar: (lane) => {
+        if (this.canSpawnEnemy('patrol_car')) this.spawnObstacle('patrol_car', lane);
+      },
+      spawnBomber: (lane) => {
+        if (this.canSpawnEnemy('bomber')) this.spawnObstacle('bomber', lane);
+      },
+      spawnTurret: (lane) => {
+        if (this.canSpawnEnemy('turret')) this.spawnObstacle('turret', lane);
+      },
+      spawnLaserGate: (lane) => {
+        if (this.canSpawnEnemy('laser_gate')) this.spawnObstacle('laser_gate', lane);
+      },
       spawnOrb: (real, lane) => this.spawnOrb(real, lane),
       spawnPowerup: (kind, lane) => this.spawnPowerup(kind, lane),
       spawnWonderFlower: (lane) => this.spawnPickup('wonder_flower', lane),
       spawnSpiritShrine: (lane) => this.spawnPickup('spirit_shrine', lane),
+      spawnRainbowStar: (lane) => this.spawnPickup('rainbow_star', lane),
     });
 
     const zoneAnnounce = this.mapDirector.consumeZoneAnnounce();
     if (zoneAnnounce) {
       const theme = this.mapDirector.getTheme();
+      gameMusic.updateTheme(theme.id);
       this.zoneCard = createZoneCard(zoneAnnounce.mapName, zoneAnnounce.chunkName, theme.accent);
+      if (this.mapDirector.isFiniteLevel()) {
+        this.zonePauseTimer = 0.85;
+      }
+      if (
+        this.activeLevel &&
+        this.mapDirector.getChunkRole() === 'climax' &&
+        getMechanic(this.activeLevel.mechanic).climaxWonder &&
+        this.wonderMode.timer <= 0
+      ) {
+        const mech = getMechanic(this.activeLevel.mechanic);
+        activateWonderMode(
+          this.wonderMode,
+          this.particles,
+          this.floatTexts,
+          this.playerX + this.playerW / 2,
+          this.playerY + this.playerH / 2,
+          mech.wonderVariant,
+        );
+        this.wonderMode.timer = 4.5;
+      }
       pulseCompanion(this.companion, 1);
       const cx = this.playerX + this.playerW / 2;
       spawnBurst(this.particles, cx, this.playerY + this.playerH / 2, theme.accent, 20, {
@@ -533,8 +706,25 @@ export class GameEngine {
     // Scroll entities
     this.obstacles.forEach((o) => {
       o.x -= scroll;
+      if (o.vx) o.x += o.vx * scaledDt;
       o.phase += dt * 3;
+      if (o.kind === 'bomber') {
+        o.y += Math.sin(this.elapsed * 2 + o.phase) * 28 * scaledDt;
+      }
+      if (o.kind === 'turret') {
+        const laserWaltz = this.mechanicGimmick === 'laser_rhythm';
+        o.shootTimer = (o.shootTimer ?? (laserWaltz ? 0.7 : 1.2)) - dt;
+        if (o.shootTimer <= 0 && o.x < this.config.width - 40 && o.x > this.playerX - 20) {
+          o.shootTimer = (laserWaltz ? 0.75 : 1.4) + Math.random() * (laserWaltz ? 0.35 : 0.8);
+          this.spawnProjectile(o);
+        }
+      }
     });
+    this.projectiles.forEach((p) => {
+      p.x += p.vx * scaledDt;
+      p.y += p.vy * scaledDt;
+    });
+    this.projectiles = this.projectiles.filter((p) => p.x > -60 && p.x < this.config.width + 80);
     this.orbs.forEach((o) => {
       o.x -= scroll;
       o.ringAngle += dt * 2.5;
@@ -630,10 +820,27 @@ export class GameEngine {
 
       pickup.collected = true;
       if (pickup.kind === 'wonder_flower') {
-        activateWonderMode(this.wonderMode, this.particles, this.floatTexts, pickup.x, pickup.y + bob);
+        const variant = this.activeLevel
+          ? getMechanic(this.activeLevel.mechanic).wonderVariant
+          : undefined;
+        activateWonderMode(
+          this.wonderMode,
+          this.particles,
+          this.floatTexts,
+          pickup.x,
+          pickup.y + bob,
+          variant,
+        );
         gameStorage.recordWonderFlower();
         this.squashX = 0.7;
         this.squashY = 1.35;
+        gameAudio.playPowerup();
+      } else if (pickup.kind === 'rainbow_star') {
+        activateRainbowStar(this.rainbowStar, this.particles, this.floatTexts, pickup.x, pickup.y + bob);
+        this.invincibleTimer = Math.max(this.invincibleTimer, this.rainbowStar.timer);
+        this.speed = Math.min(MAX_SPEED, this.speed + 40);
+        this.squashX = 0.65;
+        this.squashY = 1.4;
         gameAudio.playPowerup();
       } else {
         this.comboTimer = COMBO_WINDOW * 1.6;
@@ -684,7 +891,23 @@ export class GameEngine {
     }
 
     // Obstacle collisions
-    if (this.invincibleTimer <= 0) {
+    if (rainbowActive) {
+      const smash: number[] = [];
+      for (const obstacle of this.obstacles) {
+        const rect: Rect = { x: obstacle.x, y: obstacle.y, w: obstacle.w, h: obstacle.h };
+        if (rectsOverlap(playerRect, rect, 4)) {
+          smash.push(obstacle.id);
+          const pts = Math.floor(40 * this.getScoreMultiplier(speedBoostActive));
+          this.score += pts;
+          spawnBurst(this.particles, obstacle.x + obstacle.w / 2, obstacle.y + obstacle.h / 2, `hsl(${(this.elapsed * 280) % 360}, 100%, 65%)`, 14, { speed: 120, glow: true });
+          spawnFloatText(this.floatTexts, obstacle.x, obstacle.y - 8, `+${pts}`, PALETTE.gold, { scale: 1.1 });
+          gameAudio.playHit();
+        }
+      }
+      if (smash.length) {
+        this.obstacles = this.obstacles.filter((o) => !smash.includes(o.id));
+      }
+    } else if (this.invincibleTimer <= 0) {
       for (const obstacle of this.obstacles) {
         const rect: Rect = { x: obstacle.x, y: obstacle.y, w: obstacle.w, h: obstacle.h };
         const pad = this.isDucking ? 4 : 2;
@@ -692,9 +915,23 @@ export class GameEngine {
           if (this.shieldHits > 0) {
             this.shieldHits -= 1;
             this.invincibleTimer = 1.2;
-            this.shakeIntensity = 6;
+            this.shakeIntensity = 4;
             spawnBurst(this.particles, pcx, pcy, PALETTE.shield, 16);
             this.obstacles = this.obstacles.filter((o) => o.id !== obstacle.id);
+            gameAudio.playHit();
+            continue;
+          }
+          this.triggerDeath();
+          return;
+        }
+      }
+      for (const proj of this.projectiles) {
+        const rect: Rect = { x: proj.x, y: proj.y, w: proj.w, h: proj.h };
+        if (rectsOverlap(playerRect, rect, 2)) {
+          if (this.shieldHits > 0) {
+            this.shieldHits -= 1;
+            this.invincibleTimer = 1.2;
+            this.projectiles = this.projectiles.filter((p) => p.id !== proj.id);
             gameAudio.playHit();
             continue;
           }
@@ -706,6 +943,11 @@ export class GameEngine {
 
     // Passive score
     this.score += Math.floor(scroll * 0.045 * this.getScoreMultiplier(speedBoostActive));
+
+    if (this.mapDirector.isLevelFinished()) {
+      this.triggerLevelComplete();
+      return;
+    }
 
     this.particles = updateParticles(this.particles, dt, scroll);
     this.floatTexts = updateFloatTexts(this.floatTexts, dt, scroll);
@@ -762,9 +1004,151 @@ export class GameEngine {
     return mult;
   }
 
+  private getRoleScrollMult(role: ChunkRole): number {
+    const mario = this.mechanicGimmick === 'mario_wonder';
+    const table: Record<ChunkRole, number> = mario
+      ? { intro: 0.9, core: 1.08, climax: 1.22, payoff: 0.92, finish: 0.96 }
+      : { intro: 0.68, core: 1, climax: 1.24, payoff: 0.72, finish: 0.86 };
+    return table[role] ?? 1;
+  }
+
+  private getGimmickScrollMult(): number {
+    switch (this.mechanicGimmick) {
+      case 'neon_pulse':
+        return 1 + 0.15 * Math.sin(this.elapsed * 5.4);
+      case 'laser_rhythm':
+        return 1 + 0.11 * Math.sin(this.elapsed * 6.6);
+      case 'convoy_only':
+        return 1 + 0.07 * Math.sin(this.elapsed * 2.8);
+      case 'aerial_strike':
+        return 1 + 0.09 * Math.sin(this.elapsed * 3.6);
+      case 'siege_waves':
+        return 1 + 0.12 * Math.sin(this.elapsed * 4.2 + this.mapDirector.getChunkIndex());
+      case 'rainbow_fly':
+        return isRainbowStarActive(this.rainbowStar) ? 1.18 : 1;
+      case 'mario_wonder':
+        return 1.05 + 0.05 * Math.sin(this.elapsed * 3.4);
+      case 'spirit_duck':
+        return this.isDucking && this.isGrounded ? 0.88 : 1;
+      case 'sky_danger':
+        return this.isGrounded && !this.isDucking ? 0.94 : 1.06;
+      case 'tutorial_light':
+        return 0.92;
+      default:
+        return 1;
+    }
+  }
+
+  private canSpawnEnemy(kind: ObstacleKind): boolean {
+    const role = this.mapDirector.getChunkRole();
+    if (role === 'intro' || role === 'finish') return false;
+
+    const mech = this.activeLevel?.mechanic;
+
+    if (mech === 'omega_siege') {
+      const act = this.mapDirector.getChunkIndex();
+      if (act <= 0) return false;
+      if (act === 1) return kind === 'patrol_car' || kind === 'bot';
+      if (act === 2) return kind === 'bomber' || kind === 'turret' || kind === 'deepfake';
+      if (act === 3) return kind === 'laser_gate' || kind === 'bomber' || kind === 'turret';
+      return false;
+    }
+
+    if (role === 'payoff' && (kind === 'bomber' || kind === 'turret' || kind === 'laser_gate')) {
+      return false;
+    }
+
+    if (!mech) return true;
+
+    if (mech === 'ori_first_light') {
+      return role === 'climax' && kind === 'bot';
+    }
+
+    const allowed: Record<Exclude<LevelMechanicId, 'omega_siege' | 'ori_first_light'>, ObstacleKind[] | 'all' | 'none'> = {
+      ori_spirit_dive: ['deepfake'],
+      wonder_rainbow: ['bot', 'deepfake'],
+      grid_pulse: ['bot', 'firewall', 'deepfake'],
+      convoy_alley: ['patrol_car'],
+      star_bridge: ['deepfake', 'firewall', 'bomber', 'turret', 'laser_gate'],
+      hangar_dawn: ['bomber', 'turret'],
+      laser_waltz: ['laser_gate', 'turret'],
+    };
+
+    const rule = allowed[mech as Exclude<LevelMechanicId, 'omega_siege' | 'ori_first_light'>];
+    if (rule === 'all') return true;
+    if (rule === 'none') return false;
+    return rule.includes(kind);
+  }
+
   private spawnObstacle(kind: ObstacleKind, lane: SpawnLane) {
     const id = ++this.entityId;
     const x = this.config.width + 55;
+
+    if (kind === 'patrol_car') {
+      const h = 38;
+      const w = 62;
+      this.obstacles.push({
+        id,
+        kind,
+        x,
+        y: this.groundY - h - 4,
+        w,
+        h,
+        phase: Math.random() * Math.PI * 2,
+        passed: false,
+        vx: -40,
+      });
+      return;
+    }
+
+    if (kind === 'bomber') {
+      const h = 34;
+      const w = 72;
+      this.obstacles.push({
+        id,
+        kind,
+        x,
+        y: laneToObstacleY(this.groundY, lane, h),
+        w,
+        h,
+        phase: Math.random() * Math.PI * 2,
+        passed: false,
+      });
+      return;
+    }
+
+    if (kind === 'turret') {
+      const h = 44;
+      const w = 36;
+      this.obstacles.push({
+        id,
+        kind,
+        x,
+        y: laneToObstacleY(this.groundY, lane, h),
+        w,
+        h,
+        phase: Math.random() * Math.PI * 2,
+        passed: false,
+        shootTimer: 0.8 + Math.random() * 0.6,
+      });
+      return;
+    }
+
+    if (kind === 'laser_gate') {
+      const h = 22;
+      const w = 90;
+      this.obstacles.push({
+        id,
+        kind,
+        x,
+        y: laneToObstacleY(this.groundY, lane, h),
+        w,
+        h,
+        phase: Math.random() * Math.PI * 2,
+        passed: false,
+      });
+      return;
+    }
 
     if (kind === 'bot') {
       const h = 46;
@@ -814,6 +1198,28 @@ export class GameEngine {
     });
   }
 
+  private spawnProjectile(turret: ObstacleEntity) {
+    const cx = turret.x;
+    const cy = turret.y + turret.h / 2;
+    const tx = this.playerX + this.playerW / 2;
+    const ty = this.playerY + this.playerH / 2;
+    const dx = tx - cx;
+    const dy = ty - cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = 420;
+    this.projectiles.push({
+      id: ++this.entityId,
+      x: cx,
+      y: cy,
+      w: 10,
+      h: 4,
+      vx: (dx / dist) * speed,
+      vy: (dy / dist) * speed,
+      ownerId: turret.id,
+      color: '#ff3355',
+    });
+  }
+
   private spawnOrb(real: boolean, lane: SpawnLane) {
     this.orbs.push({
       id: ++this.entityId,
@@ -845,7 +1251,7 @@ export class GameEngine {
       kind,
       x: this.config.width + 55,
       y: laneToOrbY(this.groundY, lane),
-      radius: kind === 'wonder_flower' ? 20 : 18,
+      radius: kind === 'wonder_flower' ? 20 : kind === 'rainbow_star' ? 22 : 18,
       collected: false,
       bobPhase: Math.random() * Math.PI * 2,
     });
@@ -859,19 +1265,49 @@ export class GameEngine {
       rect.x + rect.w / 2,
       rect.y + rect.h / 2,
     );
-    this.shakeIntensity = 14;
+    this.shakeIntensity = 9;
     gameAudio.playDeath();
     this.dyingTimer = 0.55;
   }
 
+  private triggerLevelComplete() {
+    if (this.levelCompleteTriggered) return;
+    this.levelCompleteTriggered = true;
+    this.phase = 'levelcomplete';
+    gameMusic.stop();
+    this.stopLoop();
+    const cx = this.playerX + this.playerW / 2;
+    const cy = this.playerY + this.playerH / 2;
+    const mech = this.activeLevel ? getMechanic(this.activeLevel.mechanic) : null;
+    spawnBurst(this.particles, cx, cy, PALETTE.gold, 28, { speed: 120, glow: true });
+    spawnFloatText(
+      this.floatTexts,
+      cx,
+      cy - 40,
+      '✦ NIVEL COMPLETO ✦',
+      PALETTE.gold,
+      { scale: 1.4, vy: -50 },
+    );
+    gameAudio.playPowerup();
+    this.config.onGameOver({
+      ...this.buildSnapshot(),
+      levelComplete: true,
+      wonderName: mech?.wonderName,
+    });
+    this.render();
+    this.emitSnapshot(true);
+  }
+
   private gameOver() {
     this.phase = 'gameover';
+    gameMusic.stop();
     this.stopLoop();
     this.config.onGameOver(this.buildSnapshot());
     this.render();
   }
 
   private buildSnapshot(): GameSnapshot {
+    const mech = this.activeLevel ? getMechanic(this.activeLevel.mechanic) : null;
     return {
       phase: this.phase,
       score: Math.floor(this.score),
@@ -883,6 +1319,10 @@ export class GameEngine {
       combo: this.combo,
       maxCombo: this.maxCombo,
       mapName: this.mapDirector.getMapName(),
+      chunkName: this.mapDirector.getChunkName(),
+      levelProgress: this.mapDirector.isFiniteLevel() ? this.mapDirector.getLevelProgress() : undefined,
+      levelComplete: this.phase === 'levelcomplete',
+      wonderName: mech?.wonderName,
     };
   }
 
@@ -922,6 +1362,7 @@ export class GameEngine {
       isDucking: this.isDucking,
       trail: this.trail,
       obstacles: this.obstacles,
+      projectiles: this.projectiles,
       orbs: this.orbs,
       powerups: this.powerups,
       pickups: this.pickups,
@@ -940,7 +1381,16 @@ export class GameEngine {
       invincibleTimer: this.invincibleTimer,
       wonderTimer: this.wonderMode.timer,
       wonderVariant: this.wonderMode.variant,
+      rainbowStarTimer: this.rainbowStar.timer,
       dyingTimer: this.dyingTimer,
+      visualSeed: this.activeLevel ? levelVisualSeed(this.activeLevel.id) : 0,
+      levelProgress: this.mapDirector.getLevelProgress(),
+      chunkIndex: this.mapDirector.getChunkIndex(),
+      chunkTotal: this.mapDirector.getTotalChunks(),
+      showFinishGate:
+        this.mapDirector.isFiniteLevel() &&
+        this.mapDirector.isOnFinalChunk() &&
+        this.phase === 'playing',
     });
 
     if (this.flashAlpha > 0) {

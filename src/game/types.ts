@@ -5,9 +5,16 @@ import type { ZoneCardState } from './zoneCard';
 
 export type { CompanionState, FloatText, ZoneCardState };
 
-export type GamePhase = 'idle' | 'playing' | 'paused' | 'gameover';
+export type GamePhase = 'idle' | 'playing' | 'paused' | 'gameover' | 'levelcomplete';
 
-export type ObstacleKind = 'bot' | 'deepfake' | 'firewall';
+export type ObstacleKind =
+  | 'bot'
+  | 'deepfake'
+  | 'firewall'
+  | 'patrol_car'
+  | 'bomber'
+  | 'turret'
+  | 'laser_gate';
 
 export type PowerupKind = 'shield' | 'flux' | 'nova';
 
@@ -29,6 +36,20 @@ export interface ObstacleEntity {
   h: number;
   phase: number;
   passed: boolean;
+  vx?: number;
+  shootTimer?: number;
+}
+
+export interface ProjectileEntity {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  vx: number;
+  vy: number;
+  ownerId: number;
+  color: string;
 }
 
 export interface OrbEntity {
@@ -54,7 +75,7 @@ export interface PowerupEntity {
 
 export interface PickupEntity {
   id: number;
-  kind: 'wonder_flower' | 'spirit_shrine';
+  kind: 'wonder_flower' | 'spirit_shrine' | 'rainbow_star';
   x: number;
   y: number;
   radius: number;
@@ -113,7 +134,11 @@ export interface GameSnapshot {
   combo: number;
   maxCombo: number;
   mapName: string;
+  chunkName?: string;
+  levelProgress?: number;
   runRewardMessage?: string;
+  levelComplete?: boolean;
+  wonderName?: string;
 }
 
 export interface GameConfig {
@@ -149,6 +174,7 @@ export interface RenderState {
   isDucking: boolean;
   trail: TrailPoint[];
   obstacles: ObstacleEntity[];
+  projectiles: ProjectileEntity[];
   orbs: OrbEntity[];
   powerups: PowerupEntity[];
   pickups: PickupEntity[];
@@ -167,5 +193,11 @@ export interface RenderState {
   invincibleTimer: number;
   wonderTimer: number;
   wonderVariant: string;
+  rainbowStarTimer: number;
   dyingTimer: number;
+  visualSeed: number;
+  levelProgress: number;
+  chunkIndex: number;
+  chunkTotal: number;
+  showFinishGate: boolean;
 }

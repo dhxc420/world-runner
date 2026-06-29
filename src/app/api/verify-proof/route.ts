@@ -1,3 +1,5 @@
+import { auth } from '@/auth';
+import { registerVerifiedPlayer } from '@/lib/leaderboardStore';
 import type { IDKitResult } from '@worldcoin/idkit';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -47,5 +49,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true });
+  const session = await auth();
+  const nullifierHash =
+    (idkitResponse as { nullifier_hash?: string }).nullifier_hash ??
+    (idkitResponse as { proof?: { nullifier_hash?: string } }).proof?.nullifier_hash;
+
+  if (session?.user?.walletAddress && !session.user.isGuest && nullifierHash) {
+    try {
+      await registerVerifiedPlayer({
+        walletAddress: session.user.walletAddress,
+        username: session.user.username,
+        profilePictureUrl: session.user.profilePictureUrl,
+        nullifierHash,
+        verifiedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'register failed';
+      if (msg === 'NULLIFIER_USED') {
+        return NextResponse.json({ error: 'World ID already used' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, registered: true });
+  }
+
+  return NextResponse.json({ success: true, registered: false });
 }

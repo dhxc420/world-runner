@@ -26,9 +26,10 @@ export function activateWonderMode(
   floatTexts: FloatText[],
   cx: number,
   cy: number,
+  variant?: WonderVariant,
 ): WonderVariant {
   state.timer = WONDER_DURATION;
-  state.variant = VARIANTS[Math.floor(Math.random() * VARIANTS.length)];
+  state.variant = variant ?? VARIANTS[Math.floor(Math.random() * VARIANTS.length)];
   state.hueShift = Math.random() * 360;
 
   const colors = [PALETTE.magenta, PALETTE.gold, PALETTE.cyan, PALETTE.violet, '#ff6bcb'];

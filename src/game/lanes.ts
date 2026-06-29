@@ -2,7 +2,7 @@ import type { SpawnLane } from './maps/types';
 
 const LANE_HEIGHTS = {
   ground: { bot: 54, yOffset: 0 },
-  air_low: { bot: 30, yOffset: 68 },
+  air_low: { bot: 30, yOffset: 54 },
   air_mid: { bot: 0, yOffset: 110 },
   air_high: { bot: 0, yOffset: 155 },
 } as const;

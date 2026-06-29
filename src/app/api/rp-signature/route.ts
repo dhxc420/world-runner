@@ -1,3 +1,4 @@
+import { WORLD_ID_ACTION } from '@/lib/shopCatalog';
 import { signRequest } from '@worldcoin/idkit/signing';
 import { NextResponse } from 'next/server';
 
@@ -5,6 +6,10 @@ export const runtime = 'nodejs';
 
 const SIGNING_KEY = process.env.RP_SIGNING_KEY;
 const RP_ID = process.env.RP_ID;
+
+const ALLOWED_ACTIONS = new Set(
+  [process.env.WORLD_ID_ACTION, WORLD_ID_ACTION].filter(Boolean),
+);
 
 export async function POST(req: Request) {
   if (!SIGNING_KEY || !RP_ID) {
@@ -15,7 +20,11 @@ export async function POST(req: Request) {
   }
 
   const { action } = await req.json();
-  const sig = signRequest({ action, signingKeyHex: SIGNING_KEY });
+  if (!action || !ALLOWED_ACTIONS.has(action)) {
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  }
+
+  const sig = signRequest({ action, signingKeyHex: SIGNING_KEY, ttl: 300 });
 
   return NextResponse.json({
     rp_id: RP_ID,

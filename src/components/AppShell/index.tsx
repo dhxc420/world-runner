@@ -12,7 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <Page className="bg-[#0b1026] text-white">
       {children}
       {!hideNav && (
-        <Page.Footer className="fixed bottom-0 w-full border-t border-violet-500/10 bg-[#0b1026] px-0">
+        <Page.Footer className="fixed bottom-0 w-full border-t border-white/10 bg-[#0b1026]/80 px-0 backdrop-blur-xl">
           <Navigation />
         </Page.Footer>
       )}

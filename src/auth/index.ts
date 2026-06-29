@@ -1,5 +1,5 @@
 import { hashNonce } from '@/auth/wallet/client-helpers';
-import { MiniKit } from '@worldcoin/minikit-js';
+import { fetchWorldUserProfile } from '@/lib/worldUserProfile';
 import type { MiniAppWalletAuthSuccessPayload } from '@worldcoin/minikit-js/commands';
 import { verifySiweMessage } from '@worldcoin/minikit-js/siwe';
 import NextAuth, { type DefaultSession } from 'next-auth';
@@ -37,6 +37,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         mode: { label: 'Mode', type: 'text' },
         nonce: { label: 'Nonce', type: 'text' },
         signedNonce: { label: 'Signed Nonce', type: 'text' },
+        statement: { label: 'Statement', type: 'text' },
         finalPayloadJson: { label: 'Final Payload', type: 'text' },
       },
       // @ts-expect-error TODO
@@ -44,11 +45,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         mode,
         nonce,
         signedNonce,
+        statement,
         finalPayloadJson,
       }: {
         mode?: string;
         nonce: string;
         signedNonce: string;
+        statement?: string;
         finalPayloadJson: string;
       }) => {
         if (mode === 'guest') {
@@ -70,14 +73,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const finalPayload: MiniAppWalletAuthSuccessPayload =
           JSON.parse(finalPayloadJson);
-        const result = await verifySiweMessage(finalPayload, nonce);
+        const result = await verifySiweMessage(finalPayload, nonce, statement);
 
         if (!result.isValid || !result.siweMessageData.address) {
-          console.log('Invalid final payload');
+          console.log('Invalid SIWE payload');
           return null;
         }
-        // Optionally, fetch the user info from your own database
-        const userInfo = await MiniKit.getUserInfo(finalPayload.address);
+
+        const userInfo = await fetchWorldUserProfile(finalPayload.address);
 
         return {
           id: finalPayload.address,
