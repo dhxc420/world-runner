@@ -17,7 +17,9 @@ import {
   NOVA_DURATION,
   PALETTE,
   PLAYER_X_RATIO,
-  RAINBOW_STAR_FLY_LIFT,
+  RAINBOW_FLY_CRUISE,
+  RAINBOW_FLY_HEIGHT,
+  RAINBOW_FLAP_VY,
   RAINBOW_STAR_SPEED_MULT,
   SPEED_RAMP,
 } from './constants';
@@ -508,6 +510,16 @@ export class GameEngine {
   }
 
   private tryJump() {
+    if (isRainbowStarActive(this.rainbowStar)) {
+      this.playerVy = Math.min(this.playerVy, RAINBOW_FLAP_VY);
+      this.isGrounded = false;
+      this.jumpBufferTimer = 0;
+      const cx = this.playerX + this.playerW / 2;
+      spawnBurst(this.particles, cx, this.playerY + this.playerH * 0.4, PALETTE.gold, 6, { speed: 70 });
+      gameAudio.playJump();
+      return;
+    }
+
     const canJump =
       (this.isGrounded || this.coyoteTimer > 0) && !this.isDucking && this.jumpsRemaining > 0;
 
@@ -570,7 +582,6 @@ export class GameEngine {
     const rainbowActive = isRainbowStarActive(this.rainbowStar);
     if (rainbowActive) {
       this.invincibleTimer = Math.max(this.invincibleTimer, this.rainbowStar.timer);
-      this.jumpsRemaining = this.maxJumps;
     }
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
@@ -601,16 +612,29 @@ export class GameEngine {
     // Player physics
     const wasGrounded = this.isGrounded;
     if (!this.isGrounded) {
-      this.playerVy += GRAVITY * this.mechanicGravityMult * scaledDt * (rainbowActive ? 0.22 : 1);
-      if (isWonderActive(this.wonderMode) && this.wonderMode.variant === 'float') {
-        this.playerVy += 420 * scaledDt;
-      }
       if (rainbowActive) {
-        this.playerVy -= RAINBOW_STAR_FLY_LIFT * scaledDt;
-        this.playerVy = Math.max(this.playerVy, -920);
-        this.playerVy = Math.min(this.playerVy, 280);
+        const flyCeiling = this.groundY - RAINBOW_FLY_HEIGHT;
+        const cruiseY = this.groundY - RAINBOW_FLY_CRUISE;
+
+        this.playerVy += GRAVITY * 0.14 * this.mechanicGravityMult * scaledDt;
+        this.playerVy += (cruiseY - this.playerY) * 3.2 * scaledDt;
+        if (this.isDucking) this.playerVy += 720 * scaledDt;
+
+        this.playerVy = Math.max(this.playerVy, -420);
+        this.playerVy = Math.min(this.playerVy, 460);
+        this.playerY += this.playerVy * scaledDt;
+
+        if (this.playerY < flyCeiling) {
+          this.playerY = flyCeiling;
+          this.playerVy = Math.max(this.playerVy, 0);
+        }
+      } else {
+        this.playerVy += GRAVITY * this.mechanicGravityMult * scaledDt;
+        if (isWonderActive(this.wonderMode) && this.wonderMode.variant === 'float') {
+          this.playerVy += 420 * scaledDt;
+        }
+        this.playerY += this.playerVy * scaledDt;
       }
-      this.playerY += this.playerVy * scaledDt;
       this.coyoteTimer -= dt;
       if (this.playerY >= this.groundY - this.playerH) {
         this.playerY = this.groundY - this.playerH;
@@ -629,7 +653,7 @@ export class GameEngine {
       gameAudio.playLand();
     }
 
-    const zoneScrollMult = this.zonePauseTimer > 0 ? 0.35 : 1;
+    const zoneScrollMult = this.zonePauseTimer > 0 ? 0.58 : 1;
     const roleScrollMult = this.getRoleScrollMult(this.mapDirector.getChunkRole());
     const gimmickScrollMult = this.getGimmickScrollMult();
     const scroll =
@@ -676,7 +700,7 @@ export class GameEngine {
       gameMusic.updateTheme(theme.id);
       this.zoneCard = createZoneCard(zoneAnnounce.mapName, zoneAnnounce.chunkName, theme.accent);
       if (this.mapDirector.isFiniteLevel()) {
-        this.zonePauseTimer = 0.85;
+        this.zonePauseTimer = 0.4;
       }
       if (
         this.activeLevel &&
@@ -1008,7 +1032,7 @@ export class GameEngine {
     const mario = this.mechanicGimmick === 'mario_wonder';
     const table: Record<ChunkRole, number> = mario
       ? { intro: 0.9, core: 1.08, climax: 1.22, payoff: 0.92, finish: 0.96 }
-      : { intro: 0.68, core: 1, climax: 1.24, payoff: 0.72, finish: 0.86 };
+      : { intro: 0.88, core: 1.06, climax: 1.2, payoff: 0.9, finish: 0.94 };
     return table[role] ?? 1;
   }
 

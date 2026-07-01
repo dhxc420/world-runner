@@ -4,9 +4,9 @@ export const DOUBLE_JUMP_VELOCITY = -720;
 export const GROUND_RATIO = 0.76;
 export const PLAYER_X_RATIO = 0.2;
 
-export const BASE_SPEED = 220;
-export const MAX_SPEED = 470;
-export const SPEED_RAMP = 4;
+export const BASE_SPEED = 252;
+export const MAX_SPEED = 520;
+export const SPEED_RAMP = 5.5;
 
 export const SPAWN_MIN_MS = 850;
 export const SPAWN_MAX_MS = 1700;
@@ -25,8 +25,11 @@ export const COMBO_BONUS = 0.35;
 export const FLUX_DURATION = 3.5;
 export const NOVA_DURATION = 5;
 export const SHIELD_HITS = 1;
-export const RAINBOW_STAR_SPEED_MULT = 1.42;
-export const RAINBOW_STAR_FLY_LIFT = 520;
+export const RAINBOW_STAR_SPEED_MULT = 1.28;
+/** Max height above ground while rainbow flying (px) */
+export const RAINBOW_FLY_HEIGHT = 148;
+export const RAINBOW_FLY_CRUISE = 118;
+export const RAINBOW_FLAP_VY = -240;
 export const INVINCIBLE_AFTER_CONTINUE = 2;
 
 /** Ori bioluminescence + Tron neon palette */

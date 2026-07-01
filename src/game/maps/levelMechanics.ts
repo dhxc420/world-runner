@@ -55,9 +55,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Botón A = saltar. Agáchate solo si hace falta. ¡Corre y recoge la cadena dorada!',
     jumpMult: 1.14,
     gravityMult: 0.74,
-    speedRampMult: 0.68,
-    baseSpeedMult: 0.54,
-    maxSpeedMult: 0.82,
+    speedRampMult: 0.78,
+    baseSpeedMult: 0.66,
+    maxSpeedMult: 0.96,
     gimmick: 'mario_wonder',
     wonderVariant: 'rainbow',
     climaxWonder: true,
@@ -68,11 +68,11 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     wonderName: 'Wonder: Santuario bajo',
     description: 'Espíritus flotan bajo. Agáchate como en Ori al pasar bajo los shrines.',
     mobileTip: 'Mantén Agachar bajo obstáculos bajos.',
-    jumpMult: 1,
-    gravityMult: 1,
-    speedRampMult: 0.38,
-    baseSpeedMult: 0.38,
-    maxSpeedMult: 0.56,
+    jumpMult: 1.04,
+    gravityMult: 0.96,
+    speedRampMult: 0.62,
+    baseSpeedMult: 0.58,
+    maxSpeedMult: 0.8,
     gimmick: 'spirit_duck',
     wonderVariant: 'float',
     finite: true,
@@ -81,12 +81,12 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     id: 'wonder_rainbow',
     wonderName: 'Wonder: Flor RGB',
     description: 'Recolecta la flor Wonder y la ★ Rainbow Star para volar invencible.',
-    mobileTip: 'Busca la flor Wonder y la estrella RGB para volar.',
-    jumpMult: 1.06,
-    gravityMult: 0.82,
-    speedRampMult: 0.48,
-    baseSpeedMult: 0.42,
-    maxSpeedMult: 0.68,
+    mobileTip: 'Estrella RGB: vuela a media altura. Agáchate para bajar.',
+    jumpMult: 1.08,
+    gravityMult: 0.78,
+    speedRampMult: 0.68,
+    baseSpeedMult: 0.62,
+    maxSpeedMult: 0.88,
     gimmick: 'rainbow_fly',
     wonderVariant: 'rainbow',
     climaxWonder: true,
@@ -99,9 +99,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Siente el pulso: acelera y frena con el ritmo del Grid.',
     jumpMult: 1,
     gravityMult: 1,
-    speedRampMult: 0.72,
-    baseSpeedMult: 0.48,
-    maxSpeedMult: 0.84,
+    speedRampMult: 0.82,
+    baseSpeedMult: 0.62,
+    maxSpeedMult: 0.94,
     gimmick: 'neon_pulse',
     wonderVariant: 'rainbow',
     climaxWonder: true,
@@ -114,9 +114,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Peligro en el suelo. Salta cuando veas el convoy rojo.',
     jumpMult: 1.02,
     gravityMult: 1.04,
-    speedRampMult: 0.78,
-    baseSpeedMult: 0.54,
-    maxSpeedMult: 0.92,
+    speedRampMult: 0.88,
+    baseSpeedMult: 0.66,
+    maxSpeedMult: 1.0,
     gimmick: 'convoy_only',
     wonderVariant: 'glow',
     finite: true,
@@ -128,9 +128,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Quédate en tierra. El cielo es trampa: salta solo para orbes.',
     jumpMult: 1,
     gravityMult: 0.94,
-    speedRampMult: 0.62,
-    baseSpeedMult: 0.5,
-    maxSpeedMult: 0.86,
+    speedRampMult: 0.78,
+    baseSpeedMult: 0.64,
+    maxSpeedMult: 0.94,
     gimmick: 'sky_danger',
     wonderVariant: 'float',
     finite: true,
@@ -142,9 +142,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Mira arriba: bombarderos y torretas. Ritmo rápido.',
     jumpMult: 1,
     gravityMult: 1,
-    speedRampMult: 0.88,
-    baseSpeedMult: 0.58,
-    maxSpeedMult: 1.02,
+    speedRampMult: 0.95,
+    baseSpeedMult: 0.7,
+    maxSpeedMult: 1.1,
     gimmick: 'aerial_strike',
     wonderVariant: 'glow',
     finite: true,
@@ -156,9 +156,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Láseres en vals: salta o agáchate al beat. Muy rápido.',
     jumpMult: 1,
     gravityMult: 1,
-    speedRampMult: 0.95,
-    baseSpeedMult: 0.64,
-    maxSpeedMult: 1.08,
+    speedRampMult: 1.02,
+    baseSpeedMult: 0.76,
+    maxSpeedMult: 1.16,
     gimmick: 'laser_rhythm',
     wonderVariant: 'rainbow',
     climaxWonder: true,
@@ -171,9 +171,9 @@ export const LEVEL_MECHANICS: Record<LevelMechanicId, LevelMechanic> = {
     mobileTip: 'Nivel más intenso. Cada zona cambia el tipo de amenaza.',
     jumpMult: 0.98,
     gravityMult: 1.06,
-    speedRampMult: 1.1,
-    baseSpeedMult: 0.68,
-    maxSpeedMult: 1.14,
+    speedRampMult: 1.15,
+    baseSpeedMult: 0.78,
+    maxSpeedMult: 1.22,
     gimmick: 'siege_waves',
     wonderVariant: 'rainbow',
     climaxWonder: true,
@@ -188,7 +188,7 @@ export function getMechanic(id: LevelMechanicId): LevelMechanic {
 export type PaceLabel = 'tutorial' | 'tranquilo' | 'medio' | 'rapido' | 'extremo';
 
 const PACE_COPY: Record<PaceLabel, string> = {
-  tutorial: 'Muy lento — aprende',
+  tutorial: 'Tutorial — ritmo suave',
   tranquilo: 'Tranquilo',
   medio: 'Medio',
   rapido: 'Rápido',
@@ -199,10 +199,10 @@ export function getLevelPaceLabel(level: { mechanic: LevelMechanicId; speedMulti
   const mech = getMechanic(level.mechanic);
   const peak = mech.maxSpeedMult * level.speedMultiplier;
   let key: PaceLabel;
-  if (peak < 0.52) key = 'tutorial';
-  else if (peak < 0.68) key = 'tranquilo';
-  else if (peak < 0.86) key = 'medio';
-  else if (peak < 1.0) key = 'rapido';
+  if (peak < 0.62) key = 'tutorial';
+  else if (peak < 0.78) key = 'tranquilo';
+  else if (peak < 0.95) key = 'medio';
+  else if (peak < 1.12) key = 'rapido';
   else key = 'extremo';
   return PACE_COPY[key];
 }
@@ -212,7 +212,7 @@ export function estimateMechanicAvgSpeed(
   levelSpeedMult: number,
 ): number {
   const mech = getMechanic(mechanicId);
-  const start = 220 * mech.baseSpeedMult * levelSpeedMult;
-  const peak = 220 * mech.maxSpeedMult * levelSpeedMult;
+  const start = 252 * mech.baseSpeedMult * levelSpeedMult;
+  const peak = 252 * mech.maxSpeedMult * levelSpeedMult;
   return (start + peak) / 2;
 }
